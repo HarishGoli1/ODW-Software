@@ -1,0 +1,348 @@
+import { supabase } from '../lib/supabase'
+
+/**
+ * Format date string ('YYYY-MM-DD') into UI display format ('Jan 15, 2026')
+ */
+export const formatTeamDate = (dateVal) => {
+  if (!dateVal) return '—'
+  try {
+    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+      const [year, month, day] = dateVal.split('-')
+      const d = new Date(Number(year), Number(month) - 1, Number(day))
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+      })
+    }
+    const d = new Date(dateVal)
+    if (isNaN(d.getTime())) return dateVal
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+    })
+  } catch {
+    return dateVal
+  }
+}
+
+/**
+ * Maps a public.team_members database row to the UI-compatible team member object
+ * @param {Object} row - public.team_members row
+ * @param {number} activeProjects - derived count of active projects
+ * @param {number} assignedTasks - derived count of assigned tasks
+ */
+export const mapTeamMemberFromDB = (row, activeProjects = 0, assignedTasks = 0) => {
+  if (!row) return null
+
+  // Ensure skills is always a valid array of strings
+  let skills = []
+  if (Array.isArray(row.skills)) {
+    skills = row.skills
+  } else if (typeof row.skills === 'string' && row.skills.trim()) {
+    skills = row.skills
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  return {
+    id: row.id,
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    role: row.role || '',
+    department: row.department || '',
+    status: row.status || 'Active',
+    joinedDate: row.joined_date || '',
+    skills,
+    notes: row.notes || '',
+    createdAt: row.created_at || '',
+    authUserId: row.auth_user_id || null,
+    systemRole: row.system_role || 'member',
+    activeProjects: typeof activeProjects === 'number' ? activeProjects : 0,
+    assignedTasks: typeof assignedTasks === 'number' ? assignedTasks : 0,
+  }
+}
+
+/**
+ * 1. Fetch all team members with live derived project and task counts
+ */
+export const getTeamMembers = async () => {
+  const [
+    { data: teamData, error: teamError },
+    { data: projectsData, error: projectsError },
+    { data: tasksData, error: tasksError },
+  ] = await Promise.all([
+    supabase
+      .from('team_members')
+      .select('*')
+      .order('name', { ascending: true }),
+    supabase
+      .from('projects')
+      .select('id, assigned_to, project_status'),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to'),
+  ])
+
+  if (teamError) {
+    console.error('teamService.getTeamMembers error:', teamError)
+    throw teamError
+  }
+
+  if (projectsError) {
+    console.warn('teamService.getTeamMembers projects fetch warning:', projectsError)
+  }
+  if (tasksError) {
+    console.warn('teamService.getTeamMembers tasks fetch warning:', tasksError)
+  }
+
+  const rawTeam = teamData || []
+  const rawProjects = projectsData || []
+  const rawTasks = tasksData || []
+
+  const ACTIVE_PROJECT_STATUSES = ['Planning', 'In Progress', 'Review', 'On Hold']
+
+  return rawTeam.map((member) => {
+    const activeProjects = rawProjects.filter(
+      (p) => p.assigned_to === member.id && ACTIVE_PROJECT_STATUSES.includes(p.project_status)
+    ).length
+
+    const assignedTasks = rawTasks.filter(
+      (t) => t.assigned_to === member.id
+    ).length
+
+    return mapTeamMemberFromDB(member, activeProjects, assignedTasks)
+  })
+}
+
+/**
+ * 2. Fetch single team member by ID
+ */
+export const getTeamMemberById = async (id) => {
+  const [
+    { data: memberData, error: memberError },
+    { data: projectsData, error: projectsError },
+    { data: tasksData, error: tasksError },
+  ] = await Promise.all([
+    supabase
+      .from('team_members')
+      .select('*')
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('projects')
+      .select('id, assigned_to, project_status')
+      .eq('assigned_to', id),
+    supabase
+      .from('tasks')
+      .select('id, assigned_to')
+      .eq('assigned_to', id),
+  ])
+
+  if (memberError) {
+    console.error(`teamService.getTeamMemberById(${id}) error:`, memberError)
+    throw memberError
+  }
+
+  if (projectsError) console.warn('teamService.getTeamMemberById projects warning:', projectsError)
+  if (tasksError) console.warn('teamService.getTeamMemberById tasks warning:', tasksError)
+
+  const ACTIVE_PROJECT_STATUSES = ['Planning', 'In Progress', 'Review', 'On Hold']
+  const activeProjects = (projectsData || []).filter((p) =>
+    ACTIVE_PROJECT_STATUSES.includes(p.project_status)
+  ).length
+  const assignedTasks = (tasksData || []).length
+
+  return mapTeamMemberFromDB(memberData, activeProjects, assignedTasks)
+}
+
+/**
+ * 3. Create a new team member in public.team_members
+ * Persists ONLY approved columns:
+ * name, email, phone, role, department, status, joined_date, skills, notes, auth_user_id, system_role
+ * Excludes: id, created_at (auto-generated by PostgreSQL)
+ */
+export const createTeamMember = async (payload) => {
+  let skillsArray = []
+  if (Array.isArray(payload.skills)) {
+    skillsArray = payload.skills.map((s) => String(s).trim()).filter(Boolean)
+  } else if (typeof payload.skills === 'string' && payload.skills.trim()) {
+    skillsArray = payload.skills
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const dbPayload = {
+    name: (payload.name || '').trim(),
+    email: (payload.email || '').trim().toLowerCase(),
+    phone: payload.phone ? payload.phone.trim() : null,
+    role: (payload.role || '').trim(),
+    department: payload.department ? payload.department.trim() : null,
+    status: payload.status || 'Active',
+    joined_date: payload.joinedDate || payload.joined_date || null,
+    skills: skillsArray,
+    notes: payload.notes ? payload.notes.trim() : null,
+    auth_user_id: payload.authUserId || payload.auth_user_id || null,
+    system_role: payload.systemRole || payload.system_role || 'member',
+  }
+
+  const { data, error } = await supabase
+    .from('team_members')
+    .insert([dbPayload])
+    .select()
+    .single()
+
+  if (error) {
+    console.error('teamService.createTeamMember error:', error)
+    if (
+      error.code === '23505' ||
+      error.message?.includes('team_members_email_key') ||
+      error.message?.includes('duplicate key')
+    ) {
+      throw new Error('This email address is already used by another team member.')
+    }
+    throw new Error(error.message || 'Failed to create team member.')
+  }
+
+  return mapTeamMemberFromDB(data, 0, 0)
+}
+
+/**
+ * 4. Update an existing team member in public.team_members
+ * Updates only approved editable columns.
+ * Excludes: id, created_at
+ * Preserves auth_user_id and system_role unless explicitly provided.
+ */
+export const updateTeamMember = async (id, payload) => {
+  let skillsArray = []
+  if (Array.isArray(payload.skills)) {
+    skillsArray = payload.skills.map((s) => String(s).trim()).filter(Boolean)
+  } else if (typeof payload.skills === 'string' && payload.skills.trim()) {
+    skillsArray = payload.skills
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const dbPayload = {
+    name: (payload.name || '').trim(),
+    email: (payload.email || '').trim().toLowerCase(),
+    phone: payload.phone ? payload.phone.trim() : null,
+    role: (payload.role || '').trim(),
+    department: payload.department ? payload.department.trim() : null,
+    status: payload.status || 'Active',
+    joined_date: payload.joinedDate || payload.joined_date || null,
+    skills: skillsArray,
+    notes: payload.notes ? payload.notes.trim() : null,
+  }
+
+  // Preserve auth_user_id and system_role unless explicitly specified
+  if (payload.authUserId !== undefined || payload.auth_user_id !== undefined) {
+    dbPayload.auth_user_id = payload.authUserId || payload.auth_user_id || null
+  }
+  if (payload.systemRole !== undefined || payload.system_role !== undefined) {
+    dbPayload.system_role = payload.systemRole || payload.system_role || 'member'
+  }
+
+  const { data, error } = await supabase
+    .from('team_members')
+    .update(dbPayload)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error(`teamService.updateTeamMember(${id}) error:`, error)
+    if (
+      error.code === '23505' ||
+      error.message?.includes('team_members_email_key') ||
+      error.message?.includes('duplicate key')
+    ) {
+      throw new Error('This email address is already used by another team member.')
+    }
+    throw new Error(error.message || 'Failed to update team member.')
+  }
+
+  const activeProjects = payload.activeProjects || 0
+  const assignedTasks = payload.assignedTasks || 0
+  return mapTeamMemberFromDB(data, activeProjects, assignedTasks)
+}
+
+/**
+ * 5. Delete a team member from public.team_members
+ * Safety check: Verifies member is not the currently authenticated user.
+ */
+export const deleteTeamMember = async (id, currentAuthUserId = null) => {
+  // 1. Fetch target member to verify auth user linkage
+  const { data: member, error: fetchError } = await supabase
+    .from('team_members')
+    .select('id, auth_user_id, name')
+    .eq('id', id)
+    .single()
+
+  if (fetchError) {
+    console.error(`teamService.deleteTeamMember(${id}) fetch error:`, fetchError)
+    throw fetchError
+  }
+
+  // 2. Resolve current auth user id if not provided
+  let authUserId = currentAuthUserId
+  if (!authUserId) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    authUserId = sessionData?.session?.user?.id
+  }
+
+  // 3. Safety check: prevent deleting current signed-in user
+  if (member.auth_user_id && authUserId && member.auth_user_id === authUserId) {
+    throw new Error('You cannot delete the currently signed-in account.')
+  }
+
+  // 4. Delete the member
+  const { error } = await supabase
+    .from('team_members')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error(`teamService.deleteTeamMember(${id}) error:`, error)
+    throw new Error(error.message || 'Failed to delete team member.')
+  }
+
+  return { success: true, id }
+}
+
+/**
+ * 6. Get standard team form data options
+ */
+export const getTeamFormData = () => {
+  return {
+    statuses: ['Active', 'Inactive', 'On Leave'],
+    systemRoles: ['admin', 'manager', 'member'],
+    roles: [
+      'Founder',
+      'Project Manager',
+      'Senior React Developer',
+      'React JS Developer',
+      'Frontend Developer',
+      'Backend Developer',
+      'UI/UX Designer',
+      'SEO Specialist',
+      'Automation Specialist',
+      'Business Development Executive',
+      'Telecaller',
+    ],
+    departments: [
+      'Management',
+      'Development',
+      'Engineering',
+      'Design',
+      'Marketing',
+      'Sales',
+      'Automation',
+    ],
+  }
+}
