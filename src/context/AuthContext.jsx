@@ -8,6 +8,8 @@ const AuthContext = createContext({
   loading: true,
   signIn: async () => {},
   signOut: async () => {},
+  resetPassword: async () => {},
+  updatePassword: async () => {},
 })
 
 export function AuthProvider({ children }) {
@@ -80,6 +82,14 @@ export function AuthProvider({ children }) {
         if (isMounted) setEmployee(null)
       }
 
+      // If a password recovery link lands on an unexpected route, redirect to /reset-password
+      if (event === 'PASSWORD_RECOVERY') {
+        if (typeof window !== 'undefined' && window.location.pathname !== '/reset-password') {
+          window.location.href = '/reset-password'
+          return
+        }
+      }
+
       setLoading(false)
     })
 
@@ -108,6 +118,29 @@ export function AuthProvider({ children }) {
     setEmployee(null)
   }
 
+  // Send password recovery email with redirect to /reset-password
+  const resetPassword = async (email) => {
+    const redirectUrl =
+      typeof window !== 'undefined' && window.location.origin
+        ? `${window.location.origin}/reset-password`
+        : 'https://odw-software.vercel.app/reset-password'
+
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    })
+    if (error) throw error
+    return data
+  }
+
+  // Update password for active recovery session or logged-in user
+  const updatePassword = async (newPassword) => {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    })
+    if (error) throw error
+    return data
+  }
+
   const value = {
     user,
     session,
@@ -115,6 +148,8 @@ export function AuthProvider({ children }) {
     loading,
     signIn,
     signOut,
+    resetPassword,
+    updatePassword,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

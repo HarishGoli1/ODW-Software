@@ -4,6 +4,7 @@ import { NotificationProvider } from './context/NotificationContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import AppLayout from './layouts/AppLayout'
 import Login from './pages/Login'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Leads from './pages/Leads'
 import Clients from './pages/Clients'
@@ -20,8 +21,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public Authentication Route */}
+          {/* Public Authentication Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Protected CRM Routes */}
           <Route element={<ProtectedRoute />}>
