@@ -167,6 +167,23 @@ function LeadDetailsDrawer({ lead, isOpen, onClose, onEdit, canEdit = true }) {
               </div>
             </div>
 
+            {/* Website enquiry details */}
+            <div className="space-y-2.5">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-odw-text-muted">
+                Project Requirements
+              </h3>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl border border-odw-border bg-slate-50/50 p-3">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">Estimated Budget</span>
+                  <p className="mt-1 font-semibold text-odw-text leading-snug">{lead.budget || 'Not provided'}</p>
+                </div>
+                <div className="rounded-xl border border-odw-border bg-slate-50/50 p-3">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold block">Project Timeline</span>
+                  <p className="mt-1 font-semibold text-odw-text leading-snug">{lead.timeline || 'Not provided'}</p>
+                </div>
+              </div>
+            </div>
+
             {/* Customer Message */}
             <div className="space-y-2">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-odw-text-muted">
