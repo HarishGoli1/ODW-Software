@@ -48,8 +48,10 @@ export const mapLeadFromDB = (row) => {
     created: formatLeadDate(row.created_at),
     createdAt: row.created_at,
     initials: deriveInitials(row.name),
-    message: null,
-    notes: null,
+    message: row.message || '',
+    notes: row.notes || '',
+    budget: row.budget || '',
+    timeline: row.timeline || '',
   }
 }
 
@@ -103,6 +105,8 @@ export const createLead = async (payload) => {
     source: payload.source || 'Website',
     status: payload.status || 'New',
     client_id: payload.clientId || payload.client_id || null,
+    message: payload.message?.trim() || null,
+    notes: payload.notes?.trim() || null,
   }
 
   const { data, error } = await supabase
@@ -131,6 +135,8 @@ export const updateLead = async (id, payload) => {
   if (payload.service !== undefined) dbPayload.service = payload.service
   if (payload.source !== undefined) dbPayload.source = payload.source
   if (payload.status !== undefined) dbPayload.status = payload.status
+  if (payload.message !== undefined) dbPayload.message = payload.message?.trim() || null
+  if (payload.notes !== undefined) dbPayload.notes = payload.notes?.trim() || null
   if (payload.clientId !== undefined || payload.client_id !== undefined) {
     dbPayload.client_id = payload.clientId ?? payload.client_id ?? null
   }

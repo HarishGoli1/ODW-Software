@@ -123,6 +123,8 @@ function AddLeadDrawer({ isOpen, onClose, onSaveLead }) {
         service: formData.service,
         source: formData.source,
         status: formData.status,
+        message: formData.message.trim(),
+        notes: formData.notes.trim(),
       }
 
       await onSaveLead(newLead)

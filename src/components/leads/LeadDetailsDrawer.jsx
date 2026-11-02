@@ -195,6 +195,14 @@ function LeadDetailsDrawer({ lead, isOpen, onClose, onEdit, canEdit = true }) {
               </div>
             </div>
 
+            {(lead.budget || lead.timeline) && (
+              <div className="space-y-2 text-xs">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-odw-text-muted">Project Preferences</h3>
+                {lead.budget && <p><strong>Budget:</strong> {lead.budget}</p>}
+                {lead.timeline && <p><strong>Timeline:</strong> {lead.timeline}</p>}
+              </div>
+            )}
+
             {/* Activity / Timeline */}
             <div className="space-y-2.5">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-odw-text-muted">
