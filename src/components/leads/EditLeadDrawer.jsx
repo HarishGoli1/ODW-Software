@@ -124,6 +124,8 @@ function EditLeadDrawer({ lead, isOpen, onClose, onSave }) {
         service: formData.service,
         source: formData.source,
         status: formData.status,
+        message: formData.message.trim(),
+        notes: formData.notes.trim(),
       }
 
       await onSave(updatedLead)
