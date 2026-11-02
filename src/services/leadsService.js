@@ -48,8 +48,10 @@ export const mapLeadFromDB = (row) => {
     created: formatLeadDate(row.created_at),
     createdAt: row.created_at,
     initials: deriveInitials(row.name),
-    message: null,
-    notes: null,
+    message: row.message ?? null,
+    budget: row.budget ?? null,
+    timeline: row.timeline ?? null,
+    notes: row.notes ?? null,
   }
 }
 
